@@ -58,7 +58,7 @@ func TestBadFactory(t *testing.T) {
 		t.Fatal(err)
 	}
 	if want, have := 0, len(endpoints); want != have {
-		t.Errorf("want %d, have %d", want, have)
+		t.Errorf("want %q, have %q", want, have)
 	}
 }
 
@@ -79,9 +79,7 @@ func TestRefreshWithChange(t *testing.T) {
 		t.Fatalf("failed to create new publisher: %v", err)
 	}
 	defer p.Stop()
-
 	p.Endpoints()
-
 	select {}
 }
 

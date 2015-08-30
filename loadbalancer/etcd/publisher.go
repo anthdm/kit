@@ -19,7 +19,7 @@ type Publisher struct {
 }
 
 func NewPublisher(c *etcd.Client, k string, f loadbalancer.Factory, logger log.Logger) (*Publisher, error) {
-	logger = log.NewContext(logger).With("component", "ETCD Publisher")
+	logger = log.NewContext(logger).With("component", "Etcd Publisher")
 
 	p := &Publisher{
 		client:    c,
@@ -30,7 +30,7 @@ func NewPublisher(c *etcd.Client, k string, f loadbalancer.Factory, logger log.L
 		quit:      make(chan struct{}),
 	}
 
-	instances, err := p.getInstances()
+	instances, err := p.getEntries()
 	if err != nil {
 		return nil, err
 	}
@@ -39,37 +39,24 @@ func NewPublisher(c *etcd.Client, k string, f loadbalancer.Factory, logger log.L
 }
 
 func (p *Publisher) loop(endpoints []endpoint.Endpoint) {
-	endpointsChan := make(chan []endpoint.Endpoint)
-	go p.watchLoop(endpointsChan)
+	watchChan := make(chan *etcd.Response)
+	go p.client.Watch(p.keyspace, 0, true, watchChan, nil)
 
 	for {
 		select {
 		case p.endpoints <- endpoints:
 			fmt.Println("initialized endpoints")
 
-		case e := <-endpointsChan:
-			endpoints = e
-			fmt.Println("endpoints " + fmt.Sprintf("%d", len(endpoints)))
-
-		case <-p.quit:
-			return
-		}
-	}
-}
-
-func (p *Publisher) watchLoop(endpointsChan chan []endpoint.Endpoint) {
-	watchChan := make(chan *etcd.Response)
-	go p.client.Watch(p.keyspace, 0, true, watchChan, nil)
-
-	for {
-		select {
 		case <-watchChan:
-			instances, err := p.getInstances()
+			instances, err := p.getEntries()
 			if err != nil {
 				p.logger.Log("err", err)
 				continue
 			}
-			endpointsChan <- makeEndpoints(instances, p.factory, p.logger)
+			p.endpoints <- makeEndpoints(instances, p.factory, p.logger)
+
+		case <-p.quit:
+			return
 		}
 	}
 }
@@ -83,7 +70,7 @@ func (p *Publisher) Endpoints() ([]endpoint.Endpoint, error) {
 	}
 }
 
-func (p *Publisher) getInstances() ([]string, error) {
+func (p *Publisher) getEntries() ([]string, error) {
 	resp, err := p.client.Get(p.keyspace, false, true)
 	if err != nil {
 		return nil, err
